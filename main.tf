@@ -5,7 +5,24 @@ locals {
   resource_group_name = element(coalescelist(data.azurerm_resource_group.rgrp.*.name, azurerm_resource_group.rg.*.name, [""]), 0)
   location            = element(coalescelist(data.azurerm_resource_group.rgrp.*.location, azurerm_resource_group.rg.*.location, [""]), 0)
   if_ddos_enabled     = var.create_ddos_plan ? [{}] : []
+
+  firewall_subnet =  var.firewall_subnet_address_prefix != null ? { "firewall_subnet" = {       
+      subnet_name = "AzureFirewallSubnet"
+      subnet_address_prefix  = var.firewall_subnet_address_prefix
+      service_endpoints = var.firewall_service_endpoints
+   }} : {} 
+
+  gateway_subnet =  var.gateway_subnet_address_prefix != null ? { "gateway_subnet" = {       
+        subnet_name = "GatewaySubnet"
+        subnet_address_prefix  = var.gateway_subnet_address_prefix
+        service_endpoints = ["Microsoft.Storage"]
+    }} : {}
+
+  subnets = merge({
+     for subnet_tier, value in var.subnets : subnet_tier => value
+   }, local.firewall_subnet, gateway_subnet)
 }
+
 
 data "azurerm_resource_group" "rgrp" {
   count = var.create_resource_group == false ? 1 : 0
@@ -75,23 +92,23 @@ resource "azurerm_network_watcher" "nwatcher" {
 # Subnets Creation with, private link endpoint/servie network policies, service endpoints and Deligation.
 #--------------------------------------------------------------------------------------------------------
 
-resource "azurerm_subnet" "fw-snet" {
-  count                = var.firewall_subnet_address_prefix != null ? 1 : 0
-  name                 = "AzureFirewallSubnet"
-  resource_group_name  = local.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = var.firewall_subnet_address_prefix #[cidrsubnet(element(var.vnet_address_space, 0), 10, 0)]
-  service_endpoints    = var.firewall_service_endpoints
-}
+# resource "azurerm_subnet" "fw-snet" {
+#   count                = var.firewall_subnet_address_prefix != null ? 1 : 0
+#   name                 = "AzureFirewallSubnet"
+#   resource_group_name  = local.resource_group_name
+#   virtual_network_name = azurerm_virtual_network.vnet.name
+#   address_prefixes     = var.firewall_subnet_address_prefix #[cidrsubnet(element(var.vnet_address_space, 0), 10, 0)]
+#   service_endpoints    = var.firewall_service_endpoints
+# }
 
-resource "azurerm_subnet" "gw_snet" {
-  count                = var.gateway_subnet_address_prefix != null ? 1 : 0
-  name                 = "GatewaySubnet"
-  resource_group_name  = local.resource_group_name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = var.gateway_subnet_address_prefix #[cidrsubnet(element(var.vnet_address_space, 0), 8, 1)]
-  service_endpoints    = ["Microsoft.Storage"]
-}
+# resource "azurerm_subnet" "gw_snet" {
+#   count                = var.gateway_subnet_address_prefix != null ? 1 : 0
+#   name                 = "GatewaySubnet"
+#   resource_group_name  = local.resource_group_name
+#   virtual_network_name = azurerm_virtual_network.vnet.name
+#   address_prefixes     = var.gateway_subnet_address_prefix #[cidrsubnet(element(var.vnet_address_space, 0), 8, 1)]
+#   service_endpoints    = ["Microsoft.Storage"]
+# }
 
 resource "azurerm_subnet" "snet" {
   for_each                                       = var.subnets

@@ -30,12 +30,17 @@ output "virtual_network_address_space" {
 
 output "subnet_ids" {
   description = "List of IDs of subnets"
-  value       = flatten(concat([for s in azurerm_subnet.snet : s.id], [var.gateway_subnet_address_prefix != null ? azurerm_subnet.gw_snet.0.id : null], [var.firewall_subnet_address_prefix != null ? azurerm_subnet.fw-snet.0.id : null]))
+  value       = [for s in azurerm_subnet.snet : s.id] #flatten(concat([for s in azurerm_subnet.snet : s.id], [var.gateway_subnet_address_prefix != null ? azurerm_subnet.gw_snet.0.id : null], [var.firewall_subnet_address_prefix != null ? azurerm_subnet.fw-snet.0.id : null]))
 }
 
 output "subnet_address_prefixes" {
   description = "List of address prefix for subnets"
-  value       = flatten(concat([for s in azurerm_subnet.snet : s.address_prefixes], [var.gateway_subnet_address_prefix != null ? azurerm_subnet.gw_snet.0.address_prefixes : null], [var.firewall_subnet_address_prefix != null ? azurerm_subnet.fw-snet.0.address_prefixes : null]))
+  value       = [for s in azurerm_subnet.snet : s.address_prefixes] #flatten(concat([for s in azurerm_subnet.snet : s.address_prefixes], [var.gateway_subnet_address_prefix != null ? azurerm_subnet.gw_snet.0.address_prefixes : null], [var.firewall_subnet_address_prefix != null ? azurerm_subnet.fw-snet.0.address_prefixes : null]))
+}
+
+output "subnets" {
+   description = "List of subnets"
+   value = azurerm_subnet.snet
 }
 
 output "network_security_group_ids" {
