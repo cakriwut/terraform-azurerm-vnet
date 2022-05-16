@@ -20,7 +20,7 @@ locals {
 
   subnets = merge({
      for subnet_tier, value in var.subnets : subnet_tier => value
-   }, local.firewall_subnet, gateway_subnet)
+   }, local.firewall_subnet, local.gateway_subnet)
 }
 
 
@@ -111,7 +111,7 @@ resource "azurerm_network_watcher" "nwatcher" {
 # }
 
 resource "azurerm_subnet" "snet" {
-  for_each                                       = var.subnets
+  for_each                                       = local.subnets
   name                                           = each.value.subnet_name
   resource_group_name                            = local.resource_group_name
   virtual_network_name                           = azurerm_virtual_network.vnet.name
