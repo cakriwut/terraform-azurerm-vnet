@@ -39,8 +39,11 @@ output "subnet_address_prefixes" {
 }
 
 output "subnets" {
-   description = "List of subnets"
-   value = azurerm_subnet.snet
+   description = "List of subnets"   
+    value = { for key,subnet in local.subnets : key => {
+        subnet = azurerm_subnet.snet[key],
+        security_group = lookup(azurerm_network_security_group.nsg, key, {}) 
+   }}
 }
 
 output "network_security_group_ids" {
