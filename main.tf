@@ -21,6 +21,28 @@ locals {
   subnets = merge({
      for subnet_tier, value in var.subnets : subnet_tier => value
    }, local.firewall_subnet, local.gateway_subnet)
+
+  subnets_nsgs = flatten([
+    for key,subnet in local.subnets : [
+         for rule in concat(lookup(subnet, "nsg_inbound_rules", []), lookup(subnet, "nsg_outbound_rules", [])) : 
+            {
+              keyname                    = "${rule[2] == "" ? "Inbound" : rule[2]}_${rule[1]}"
+              subnet_nsg_name            = lower("nsg_${key}_in")
+              key                        = key
+              subnet_name                = subnet.subnet_name
+              name                       = rule[0] == "" ? "Default_Rule" : rule[0]
+              priority                   = rule[1]
+              direction                  = rule[2] == "" ? "Inbound" : rule[2]
+              access                     = rule[3] == "" ? "Allow" : rule[3]
+              protocol                   = rule[4] == "" ? "Tcp" : rule[4]
+              source_port_range          = "*"
+              destination_port_range     = rule[5] == "" ? "*" : rule[5]
+              source_address_prefix      = rule[6] == "" ? element(subnet.subnet_address_prefix, 0) : rule[6]
+              destination_address_prefix = rule[7] == "" ? element(subnet.subnet_address_prefix, 0) : rule[7]
+              description                = "${rule[2]}_Port_${rule[5]}"
+            }
+       ]
+  ])
 }
 
 
@@ -88,27 +110,6 @@ resource "azurerm_network_watcher" "nwatcher" {
   tags                = merge({ "Name" = format("%s", "NetworkWatcher_${local.location}") }, var.tags, )
 }
 
-#--------------------------------------------------------------------------------------------------------
-# Subnets Creation with, private link endpoint/servie network policies, service endpoints and Deligation.
-#--------------------------------------------------------------------------------------------------------
-
-# resource "azurerm_subnet" "fw-snet" {
-#   count                = var.firewall_subnet_address_prefix != null ? 1 : 0
-#   name                 = "AzureFirewallSubnet"
-#   resource_group_name  = local.resource_group_name
-#   virtual_network_name = azurerm_virtual_network.vnet.name
-#   address_prefixes     = var.firewall_subnet_address_prefix #[cidrsubnet(element(var.vnet_address_space, 0), 10, 0)]
-#   service_endpoints    = var.firewall_service_endpoints
-# }
-
-# resource "azurerm_subnet" "gw_snet" {
-#   count                = var.gateway_subnet_address_prefix != null ? 1 : 0
-#   name                 = "GatewaySubnet"
-#   resource_group_name  = local.resource_group_name
-#   virtual_network_name = azurerm_virtual_network.vnet.name
-#   address_prefixes     = var.gateway_subnet_address_prefix #[cidrsubnet(element(var.vnet_address_space, 0), 8, 1)]
-#   service_endpoints    = ["Microsoft.Storage"]
-# }
 
 resource "azurerm_subnet" "snet" {
   for_each                                       = local.subnets
@@ -141,22 +142,32 @@ resource "azurerm_network_security_group" "nsg" {
   resource_group_name = local.resource_group_name
   location            = local.location
   tags                = merge({ "ResourceName" = lower("nsg_${each.key}_in") }, var.tags, )
-  dynamic "security_rule" {
-    for_each = concat(lookup(each.value, "nsg_inbound_rules", []), lookup(each.value, "nsg_outbound_rules", []))
-    content {
-      name                       = security_rule.value[0] == "" ? "Default_Rule" : security_rule.value[0]
-      priority                   = security_rule.value[1]
-      direction                  = security_rule.value[2] == "" ? "Inbound" : security_rule.value[2]
-      access                     = security_rule.value[3] == "" ? "Allow" : security_rule.value[3]
-      protocol                   = security_rule.value[4] == "" ? "Tcp" : security_rule.value[4]
-      source_port_range          = "*"
-      destination_port_range     = security_rule.value[5] == "" ? "*" : security_rule.value[5]
-      source_address_prefix      = security_rule.value[6] == "" ? element(each.value.subnet_address_prefix, 0) : security_rule.value[6]
-      destination_address_prefix = security_rule.value[7] == "" ? element(each.value.subnet_address_prefix, 0) : security_rule.value[7]
-      description                = "${security_rule.value[2]}_Port_${security_rule.value[5]}"
-    }
-  }
+
 }
+
+
+resource "azurerm_network_security_rule" "nsg-rule" {
+   for_each = {
+     for  rule in local.subnets_nsgs : "${rule.keyname}_${rule.subnet_name}" => rule
+   }
+  
+    resource_group_name   = local.resource_group_name
+    network_security_group_name = azurerm_network_security_group.nsg[each.value.key].name
+
+    name                  = each.value.name
+    priority              = each.value.priority
+    direction             = each.value.direction
+    access                = each.value.access
+    protocol              = each.value.protocol
+    source_port_range    = each.value.source_port_range     
+    destination_port_range = each.value.destination_port_range 
+
+    source_address_prefix = each.value.source_address_prefix
+    destination_address_prefix = each.value.destination_address_prefix
+    
+    description                = each.value.description
+}
+
 
 resource "azurerm_subnet_network_security_group_association" "nsg-assoc" {
   for_each                  = var.subnets
